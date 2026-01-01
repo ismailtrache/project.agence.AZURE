@@ -1,0 +1,49 @@
+
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .contact-grid { display: grid; grid-template-columns: 1fr; gap: 2rem; }
+    @media (min-width: 768px) { .contact-grid { grid-template-columns: 1fr 1fr; gap: 4rem; } }
+    .contact-info p { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; font-size: 1.1rem; }
+    .contact-info i { font-size: 1.5rem; color: var(--primary); width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; }
+    .contact-map-link { color: inherit; text-decoration: none; }
+    .contact-map-link:hover { text-decoration: underline; }
+    .contact-social a { display: flex; align-items: center; gap: 0.7rem; color: var(--primary); text-decoration: none; margin-bottom: 0.8rem; word-break: break-all; }
+    .contact-social i { font-size: 1.5rem; color: white; background: var(--primary); width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+    .contact-form .form-group { margin-bottom: 1.5rem; }
+    .contact-form label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+    .contact-form input, .contact-form textarea { width: 100%; padding: 1rem; border: 1px solid #ccc; border-radius: var(--border-radius); font-family: 'Poppins', sans-serif; font-size: 1rem; }
+    .btn-submit { background: var(--primary); color: white; padding: 1rem 2.5rem; border-radius: 50px; border: none; cursor: pointer; font-size: 1rem; font-weight: 600; transition: all 0.3s; }
+</style>
+<div class="page-header"><h1>Contactez-Nous</h1></div>
+<section class="section">
+    <div class="container">
+        <h2 class="section-title">Prenons Contact</h2>
+        <p class="section-subtitle">Une question ? Une demande de devis ? Notre équipe est à votre écoute.</p>
+        <div class="contact-grid">
+            <div class="contact-info">
+                <h3>Informations de Contact</h3>
+                <p><i class="fas fa-map-marker-alt"></i><a class="contact-map-link" href="https://www.google.com/maps/place/TRACHE+TRAVEL+SERVICES/@35.6999797,-0.6176269,17z/data=!3m1!4b1!4m6!3m5!1s0xd7e89f151826adb:0xf1caabb24d1a41c5!8m2!3d35.6999797!4d-0.615052!16s%2Fg%2F11vbbt0p74?entry=ttu&g_ep=EgoyMDI1MTIwOS4wIKXMDSoASAFQAw%3D%3D" target="_blank" rel="noopener">{{ data.contact_info.adresse }}</a></p>
+                <p><i class="fas fa-phone"></i>{{ data.contact_info.telephone }}</p>
+                <p><i class="fas fa-envelope"></i>{{ data.contact_info.email }}</p>
+                <p><i class="fas fa-clock"></i>{{ data.contact_info.horaires }}</p>
+                <div class="contact-social">
+                    <a href="{{ data.contact_info.social_links.facebook }}" target="_blank" rel="noopener"><i class="fab fa-facebook-f"></i>{{ data.contact_info.social_links.facebook }}</a>
+                    <a href="{{ data.contact_info.social_links.instagram }}" target="_blank" rel="noopener"><i class="fab fa-instagram"></i>{{ data.contact_info.social_links.instagram }}</a>
+                    <a href="{{ data.contact_info.social_links.tiktok }}" target="_blank" rel="noopener"><i class="fab fa-tiktok"></i>{{ data.contact_info.social_links.tiktok }}</a>
+                </div>
+            </div>
+            <div class="contact-form">
+                <h3>Envoyez-nous un message</h3>
+                <form action="{{ url_for('contact_form') }}" method="post">
+                    <div class="form-group"><label for="nom">Nom Complet</label><input type="text" id="nom" name="nom" required></div>
+                    <div class="form-group"><label for="email">Email (Facultatif)</label><input type="email" id="email" name="email"></div>
+                    <div class="form-group"><label for="telephone">Numéro de téléphone</label><input type="tel" id="telephone" name="telephone" required></div>
+                    <div class="form-group"><label for="message">Message</label><textarea id="message" name="message" rows="5" required></textarea></div>
+                    <button type="submit" class="btn-submit">Envoyer</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

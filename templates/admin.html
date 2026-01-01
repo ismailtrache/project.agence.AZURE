@@ -1,0 +1,151 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<style>
+    .admin-container { padding: 2rem 1rem; max-width: 1000px; margin: 2rem auto; background: #f8f9fa; border-radius: 15px; box-shadow: var(--shadow); }
+    .admin-section { margin-bottom: 3rem; }
+    .admin-section h2 { font-size: 1.8rem; color: var(--primary); border-bottom: 3px solid var(--accent); padding-bottom: 0.5rem; margin-bottom: 1.5rem; }
+    .form-group { margin-bottom: 1rem; }
+    label { font-weight: 600; display: block; margin-bottom: 0.5rem; }
+    input, textarea, select { width: 100%; padding: 0.8rem; border-radius: 8px; border: 1px solid #ccc; font-size: 1rem; font-family: 'Poppins', sans-serif; }
+    .btn-submit { background: var(--primary); color: white; padding: 0.8rem 2rem; border-radius: 50px; border: none; cursor: pointer; font-size: 1rem; font-weight: 600; transition: all 0.3s; display: inline-block; margin-top: 1rem; }
+    .dest-list { list-style: none; padding: 0; }
+    .dest-item { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid #eee; }
+    .dest-actions a { margin-left: 1rem; text-decoration: none; color: var(--primary); }
+    .dest-actions a.delete { color: #e74c3c; }
+    .order-arrows a { font-size: 1.2rem; margin-left: 1rem; }
+    .card { border: 1px solid #eee; border-radius: 12px; padding: 1rem; background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.03); }
+</style>
+<div class="page-header"><h1>Panneau de Contrôle</h1></div>
+<div class="admin-container">
+    <div class="admin-section">
+        <h2>Informations du site</h2>
+        <form action="{{ url_for('update_site_info') }}" method="post" class="card">
+            <div class="form-group"><label for="company_name">Nom de l'agence</label><input type="text" id="company_name" name="company_name" value="{{ data.company_name }}" required></div>
+            <div class="form-group"><label for="tagline">Slogan</label><input type="text" id="tagline" name="tagline" value="{{ data.tagline }}" required></div>
+            <div class="form-group"><label for="telephone">Téléphone</label><input type="text" id="telephone" name="telephone" value="{{ data.contact_info.telephone }}" required></div>
+            <div class="form-group"><label for="email">Email</label><input type="email" id="email" name="email" value="{{ data.contact_info.email }}" required></div>
+            <div class="form-group"><label for="adresse">Adresse</label><textarea id="adresse" name="adresse" rows="2" required>{{ data.contact_info.adresse }}</textarea></div>
+            <div class="form-group"><label for="horaires">Horaires</label><input type="text" id="horaires" name="horaires" value="{{ data.contact_info.horaires }}" required></div>
+            <div class="form-group"><label for="facebook">Facebook</label><input type="url" id="facebook" name="facebook" value="{{ data.contact_info.social_links.facebook }}"></div>
+            <div class="form-group"><label for="instagram">Instagram</label><input type="url" id="instagram" name="instagram" value="{{ data.contact_info.social_links.instagram }}"></div>
+            <div class="form-group"><label for="tiktok">TikTok</label><input type="url" id="tiktok" name="tiktok" value="{{ data.contact_info.social_links.tiktok }}"></div>
+            <button type="submit" class="btn-submit">Mettre à jour</button>
+        </form>
+    </div>
+
+    <div class="admin-section">
+        <h2>Services</h2>
+        {% for service in data.services %}
+        <form action="{{ url_for('edit_service_entry', index=loop.index0) }}" method="post" class="card" style="margin-bottom:1.5rem;">
+            <div class="form-group"><label>Nom</label><input type="text" name="nom" value="{{ service.nom }}" required></div>
+            <div class="form-group"><label>Description</label><textarea name="description" rows="2" required>{{ service.description }}</textarea></div>
+            <div class="form-group"><label>Icône (Font Awesome)</label><input type="text" name="icon" value="{{ service.icon }}" required></div>
+            <button type="submit" class="btn-submit">Enregistrer le service</button>
+        </form>
+        {% endfor %}
+    </div>
+
+    <div class="admin-section">
+        <h2>Pourquoi nous choisir</h2>
+        {% for item in data.why_us %}
+        <form action="{{ url_for('edit_whyus_entry', index=loop.index0) }}" method="post" class="card" style="margin-bottom:1.5rem;">
+            <div class="form-group"><label>Titre</label><input type="text" name="title" value="{{ item.title }}" required></div>
+            <div class="form-group"><label>Description</label><textarea name="description" rows="2" required>{{ item.description }}</textarea></div>
+            <div class="form-group"><label>Icône (Font Awesome)</label><input type="text" name="icon" value="{{ item.icon }}" required></div>
+            <button type="submit" class="btn-submit">Enregistrer ce bloc</button>
+        </form>
+        {% endfor %}
+    </div>
+
+    <div class="admin-section">
+        <h2>Messages reçus</h2>
+        {% if messages %}
+        <div class="card" style="overflow-x:auto;">
+            <table style="width:100%; border-collapse: collapse;">
+                <thead>
+                    <tr>
+                        <th style="text-align:left; padding:8px;">Date</th>
+                        <th style="text-align:left; padding:8px;">Nom</th>
+                        <th style="text-align:left; padding:8px;">Email</th>
+                        <th style="text-align:left; padding:8px;">Téléphone</th>
+                        <th style="text-align:left; padding:8px;">Message</th>
+                        <th style="text-align:left; padding:8px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for msg in messages %}
+                    <tr style="border-top:1px solid #eee;">
+                        <td style="padding:8px;">{{ msg.Date }}</td>
+                        <td style="padding:8px;">{{ msg.Nom }}</td>
+                        <td style="padding:8px;">{{ msg.Email }}</td>
+                        <td style="padding:8px;">{{ msg.Telephone }}</td>
+                        <td style="padding:8px; white-space:pre-wrap;">{{ msg.Message }}</td>
+                        <td style="padding:8px;">
+                            <a href="{{ url_for('delete_message', index=loop.index0) }}" class="delete" onclick="return confirm('Supprimer ce message ?')">Supprimer</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+            <p>Aucun message reçu.</p>
+        {% endif %}
+    </div>
+
+    <div class="admin-section">
+        <h2>Tarifs Assurance (HTML)</h2>
+        <form action="{{ url_for('update_assurance_html') }}" method="post" class="card">
+            <div class="form-group">
+                <label for="assurance_tables_html">Collez ou éditez le tableau (HTML)</label>
+                <textarea id="assurance_tables_html" name="assurance_tables_html" rows="10">{{ data.assurance_tables_html|default('') }}</textarea>
+            </div>
+            <button type="submit" class="btn-submit">Mettre à jour l'assurance</button>
+        </form>
+    </div>
+
+    <div class="admin-section">
+        <h2>Tarifs Visa (HTML)</h2>
+        <form action="{{ url_for('update_visa_html') }}" method="post" class="card">
+            <div class="form-group">
+                <label for="visa_tables_html">Collez ou éditez les tableaux (HTML)</label>
+                <textarea id="visa_tables_html" name="visa_tables_html" rows="12">{{ data.visa_tables_html|default('') }}</textarea>
+            </div>
+            <button type="submit" class="btn-submit">Mettre à jour les visas</button>
+        </form>
+    </div>
+
+    <div class="admin-section">
+        <h2>Ajouter une Destination</h2>
+        <form action="{{ url_for('add_destination') }}" method="post" enctype="multipart/form-data">
+            <div class="form-group"><label for="nom">Nom</label><input type="text" id="nom" name="nom" required></div>
+            <div class="form-group"><label for="description">Description</label><textarea id="description" name="description" rows="3" required></textarea></div>
+            <div class="form-group"><label for="prix">Prix</label><input type="text" id="prix" name="prix" required></div>
+            <div class="form-group"><label for="image">Image</label><input type="file" id="image" name="image"></div>
+            <button type="submit" class="btn-submit">Ajouter</button>
+        </form>
+    </div>
+    <div class="admin-section">
+        <h2>Gérer les Destinations</h2>
+        <ul class="dest-list">
+            {% for i in range(data.destinations|length) %}
+            <li class="dest-item">
+                <span>{{ data.destinations[i].nom }}</span>
+                <div class="dest-actions">
+                    <span class="order-arrows">
+                        {% if not loop.first %}
+                        <a href="{{ url_for('move_destination_up', index=i) }}">⬆️</a>
+                        {% endif %}
+                        {% if not loop.last %}
+                        <a href="{{ url_for('move_destination_down', index=i) }}">⬇️</a>
+                        {% endif %}
+                    </span>
+                    <a href="{{ url_for('edit_destination', index=i) }}">Modifier</a>
+                    <a href="{{ url_for('delete_destination', index=i) }}" onclick="return confirm('Êtes-vous sûr ?')" class="delete">Supprimer</a>
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}
