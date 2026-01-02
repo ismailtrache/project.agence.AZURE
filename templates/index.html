@@ -50,7 +50,6 @@
     .flight-search-note { margin-top: 1rem; color: var(--text-secondary); font-size: 0.9rem; }
     .flight-alert { margin-top: 1rem; padding: 0.9rem 1rem; border-radius: 12px; font-weight: 600; }
     .flight-alert-error { background: #fee2e2; color: #991b1b; }
-    .flight-alert-info { background: #e0f2fe; color: #0c4a6e; }
     .flight-results { margin-top: 1.5rem; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
     .flight-card { background: #f8fafc; border-radius: 16px; padding: 1rem; border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 0.9rem; }
     .flight-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
@@ -109,11 +108,11 @@
             <form class="flight-search-form" method="post" action="{{ url_for('flight_search') }}">
                 <div class="flight-field">
                     <label for="departure">Depart (IATA)</label>
-                    <input type="text" id="departure" name="departure" list="iata-list" maxlength="3" pattern="[A-Za-z]{3}" placeholder="YUL" value="{{ flight_query.get('dep_iata', '') }}" required>
+                    <input type="text" id="departure" name="departure" list="iata-list" maxlength="3" pattern="[A-Za-z]{3}" placeholder="CDG" value="{{ flight_query.get('dep_iata', '') }}" required>
                 </div>
                 <div class="flight-field">
                     <label for="arrival">Arrivee (IATA)</label>
-                    <input type="text" id="arrival" name="arrival" list="iata-list" maxlength="3" pattern="[A-Za-z]{3}" placeholder="CDG" value="{{ flight_query.get('arr_iata', '') }}" required>
+                    <input type="text" id="arrival" name="arrival" list="iata-list" maxlength="3" pattern="[A-Za-z]{3}" placeholder="ALG" value="{{ flight_query.get('arr_iata', '') }}" required>
                 </div>
                 <div class="flight-field">
                     <label for="flight-date">Date</label>
@@ -122,12 +121,9 @@
                 <button class="btn btn-primary flight-search-button" type="submit"><i class="fas fa-search"></i> Rechercher</button>
             </form>
             <datalist id="iata-list"></datalist>
-            <p class="flight-search-note">Exemples: YUL, CDG, DXB. Les horaires sont fournis a titre indicatif.</p>
+            <p class="flight-search-note">Exemples: ALG, CDG, DXB, ORN. Les horaires sont fournis a titre indicatif.</p>
             {% if flight_error %}
             <div class="flight-alert flight-alert-error">{{ flight_error }}</div>
-            {% endif %}
-            {% if flight_warning %}
-            <div class="flight-alert flight-alert-info">{{ flight_warning }}</div>
             {% endif %}
             {% if flight_results %}
             <div class="flight-results">
