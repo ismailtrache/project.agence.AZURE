@@ -201,11 +201,50 @@ def suggest_airports(query):
 def format_api_datetime(value):
     if not value:
         return ''
+    if isinstance(value, (int, float)):
+        return datetime.utcfromtimestamp(value).strftime('%d/%m %H:%M')
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if cleaned.isdigit():
+            return datetime.utcfromtimestamp(int(cleaned)).strftime('%d/%m %H:%M')
+        value = cleaned.replace('Z', '+00:00')
     try:
-        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        parsed = datetime.fromisoformat(value)
     except ValueError:
-        return value
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
+            try:
+                parsed = datetime.strptime(value, fmt)
+                break
+            except ValueError:
+                parsed = None
+        if not parsed:
+            return value
     return parsed.strftime('%d/%m %H:%M')
+
+def lookup_iata_airport(iata):
+    if not iata:
+        return {}
+    code = iata.strip().upper()
+    for airport in load_iata_airports():
+        if (airport.get('iata') or '').upper() == code:
+            return airport
+    return {}
+
+def format_airport_label(info):
+    if not info:
+        return ''
+    city = info.get('city') or ''
+    name = info.get('name') or ''
+    if city and name and city.lower() != name.lower():
+        return f"{city} ({name})"
+    return city or name
+
+def extract_time_value(item, keys):
+    for key in keys:
+        value = item.get(key)
+        if value:
+            return format_api_datetime(value)
+    return ''
 
 
 def fetch_flight_schedule(dep_iata, arr_iata, flight_date):
@@ -214,7 +253,8 @@ def fetch_flight_schedule(dep_iata, arr_iata, flight_date):
     params = {
         'api_key': AIRLABS_API_KEY,
         'dep_iata': dep_iata,
-        'arr_iata': arr_iata
+        'arr_iata': arr_iata,
+        'limit': 8
     }
     if flight_date:
         params['dep_time'] = flight_date
@@ -235,18 +275,29 @@ def fetch_flight_schedule(dep_iata, arr_iata, flight_date):
         return [], str(payload.get('message'))
     flights = []
     for item in (payload.get('response') or [])[:8]:
+        dep_code = (item.get('dep_iata') or '').upper()
+        arr_code = (item.get('arr_iata') or '').upper()
+        dep_airport = item.get('dep_name') or item.get('dep_airport') or item.get('dep_city') or ''
+        arr_airport = item.get('arr_name') or item.get('arr_airport') or item.get('arr_city') or ''
+        if not dep_airport and dep_code:
+            dep_airport = format_airport_label(lookup_iata_airport(dep_code))
+        if not arr_airport and arr_code:
+            arr_airport = format_airport_label(lookup_iata_airport(arr_code))
         status = (item.get('status') or item.get('flight_status') or 'unknown').replace('_', ' ')
+        status_class = status.lower().replace(' ', '-')
+        if status_class in ('en-route', 'enroute', 'en_route'):
+            status_class = 'active'
         flights.append({
             'airline': item.get('airline_name') or item.get('airline_iata') or item.get('airline_icao') or 'Compagnie inconnue',
             'flight_number': item.get('flight_iata') or item.get('flight_icao') or item.get('flight_number') or '-',
             'status': status,
-            'status_class': status.lower().replace(' ', '-'),
-            'dep_airport': item.get('dep_name') or item.get('dep_airport') or item.get('dep_city') or '-',
-            'dep_iata': item.get('dep_iata') or '-',
-            'dep_time': format_api_datetime(item.get('dep_time') or item.get('dep_time_utc') or item.get('dep_scheduled')),
-            'arr_airport': item.get('arr_name') or item.get('arr_airport') or item.get('arr_city') or '-',
-            'arr_iata': item.get('arr_iata') or '-',
-            'arr_time': format_api_datetime(item.get('arr_time') or item.get('arr_time_utc') or item.get('arr_scheduled'))
+            'status_class': status_class,
+            'dep_airport': dep_airport or '-',
+            'dep_iata': dep_code or '-',
+            'dep_time': extract_time_value(item, ['dep_time', 'dep_time_utc', 'dep_scheduled', 'dep_time_ts']),
+            'arr_airport': arr_airport or '-',
+            'arr_iata': arr_code or '-',
+            'arr_time': extract_time_value(item, ['arr_time', 'arr_time_utc', 'arr_scheduled', 'arr_time_ts'])
         })
     return flights, None
 
