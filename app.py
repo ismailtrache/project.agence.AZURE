@@ -57,8 +57,7 @@ IATA_DATA_FILE = os.path.join(os.path.dirname(__file__), 'iata_airports.json')
 
 AIRLABS_API_KEY = os.environ.get('AIRLABS_API_KEY', '')
 AIRLABS_BASE_URL = os.environ.get('AIRLABS_BASE_URL', 'https://airlabs.co/api/v9')
-AIRLABS_SCHEDULES_ENDPOINT = os.environ.get('AIRLABS_SCHEDULES_ENDPOINT', 'schedules')
-AIRLABS_FLIGHTS_ENDPOINT = os.environ.get('AIRLABS_FLIGHTS_ENDPOINT', 'flights')
+AIRLABS_ENDPOINT = os.environ.get('AIRLABS_ENDPOINT', 'flights')
 
 _iata_cache = None
 
@@ -265,128 +264,49 @@ def extract_time_value(item, keys):
             return format_api_datetime(value)
     return ''
 
-def parse_date_value(value):
-    if not value:
-        return None
-    if isinstance(value, (int, float)):
-        return datetime.utcfromtimestamp(value).date()
-    if isinstance(value, str):
-        cleaned = value.strip()
-        if cleaned.isdigit():
-            return datetime.utcfromtimestamp(int(cleaned)).date()
-        cleaned = cleaned.replace('Z', '+00:00')
-        try:
-            return datetime.fromisoformat(cleaned).date()
-        except ValueError:
-            for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
-                try:
-                    return datetime.strptime(cleaned, fmt).date()
-                except ValueError:
-                    continue
-    return None
-
-def extract_date_value(item, keys):
-    for key in keys:
-        value = item.get(key)
-        if value:
-            parsed = parse_date_value(value)
-            if parsed:
-                return parsed
-    return None
-
-def airlabs_match_key(item):
-    flight = item.get('flight_iata') or item.get('flight_icao') or item.get('flight_number')
-    if flight:
-        return f"flight:{flight}".upper()
-    airline = item.get('airline_iata') or item.get('airline_icao') or item.get('airline_name')
-    dep = item.get('dep_iata')
-    arr = item.get('arr_iata')
-    if airline and dep and arr:
-        return f"route:{airline}-{dep}-{arr}".upper()
-    return None
-
-
 def fetch_flight_schedule(dep_iata, arr_iata, flight_date):
     if not AIRLABS_API_KEY:
         return [], "La cle API n'est pas configuree."
-    base_params = {
+    params = {
         'api_key': AIRLABS_API_KEY,
         'dep_iata': dep_iata,
         'arr_iata': arr_iata,
         'limit': 8
     }
-    schedule_items = []
-    schedule_error = None
     if flight_date:
-        schedule_params = dict(base_params)
-        schedule_params['dep_time'] = flight_date
-        schedule_items, schedule_error = call_airlabs(AIRLABS_SCHEDULES_ENDPOINT, schedule_params)
-        if schedule_items is None:
-            schedule_items = []
+        params['dep_time'] = flight_date
 
-    flight_items, flight_error = call_airlabs(AIRLABS_FLIGHTS_ENDPOINT, base_params)
-    if flight_items is None:
-        flight_items = []
-
-    if not schedule_items and not flight_items:
-        return [], schedule_error or flight_error or "Aucun vol trouve pour ces criteres."
-
-    target_date = None
-    if flight_date:
-        try:
-            target_date = datetime.strptime(flight_date, '%Y-%m-%d').date()
-        except ValueError:
-            target_date = None
-
-    flights_map = {}
-    for item in flight_items:
-        key = airlabs_match_key(item)
-        if key and key not in flights_map:
-            flights_map[key] = item
+    items, error = call_airlabs(AIRLABS_ENDPOINT, params)
+    if items is None:
+        return [], error
+    if not items:
+        return [], error or "Aucun vol trouve pour ces criteres."
 
     flights = []
-    primary_items = schedule_items if schedule_items else flight_items
-    for item in primary_items[:8]:
-        key = airlabs_match_key(item)
-        flight_item = flights_map.get(key) if key else None
-        if target_date and flight_item:
-            flight_item_date = extract_date_value(flight_item, ['dep_time', 'dep_time_utc', 'dep_scheduled', 'dep_time_ts'])
-            if flight_item_date and flight_item_date != target_date:
-                flight_item = None
-        dep_code = ((item.get('dep_iata') or flight_item.get('dep_iata') if flight_item else '') or '').upper()
-        arr_code = ((item.get('arr_iata') or flight_item.get('arr_iata') if flight_item else '') or '').upper()
+    for item in items[:8]:
+        dep_code = (item.get('dep_iata') or '').upper()
+        arr_code = (item.get('arr_iata') or '').upper()
         dep_airport = item.get('dep_name') or item.get('dep_airport') or item.get('dep_city') or ''
-        if not dep_airport and flight_item:
-            dep_airport = flight_item.get('dep_name') or flight_item.get('dep_airport') or flight_item.get('dep_city') or ''
         arr_airport = item.get('arr_name') or item.get('arr_airport') or item.get('arr_city') or ''
-        if not arr_airport and flight_item:
-            arr_airport = flight_item.get('arr_name') or flight_item.get('arr_airport') or flight_item.get('arr_city') or ''
         if not dep_airport and dep_code:
             dep_airport = format_airport_label(lookup_iata_airport(dep_code))
         if not arr_airport and arr_code:
             arr_airport = format_airport_label(lookup_iata_airport(arr_code))
-        status_source = flight_item or item
-        status = (status_source.get('status') or status_source.get('flight_status') or 'unknown').replace('_', ' ')
+        status = (item.get('status') or item.get('flight_status') or 'unknown').replace('_', ' ')
         status_class = status.lower().replace(' ', '-')
         if status_class in ('en-route', 'enroute', 'en_route'):
             status_class = 'active'
-        dep_time = extract_time_value(item, ['dep_time', 'dep_time_utc', 'dep_scheduled', 'dep_time_ts'])
-        if not dep_time and flight_item:
-            dep_time = extract_time_value(flight_item, ['dep_time', 'dep_time_utc', 'dep_scheduled', 'dep_time_ts'])
-        arr_time = extract_time_value(item, ['arr_time', 'arr_time_utc', 'arr_scheduled', 'arr_time_ts'])
-        if not arr_time and flight_item:
-            arr_time = extract_time_value(flight_item, ['arr_time', 'arr_time_utc', 'arr_scheduled', 'arr_time_ts'])
         flights.append({
-            'airline': item.get('airline_name') or item.get('airline_iata') or item.get('airline_icao') or (flight_item.get('airline_name') if flight_item else None) or (flight_item.get('airline_iata') if flight_item else None) or 'Compagnie inconnue',
-            'flight_number': item.get('flight_iata') or item.get('flight_icao') or item.get('flight_number') or (flight_item.get('flight_iata') if flight_item else None) or (flight_item.get('flight_icao') if flight_item else None) or '-',
+            'airline': item.get('airline_name') or item.get('airline_iata') or item.get('airline_icao') or 'Compagnie inconnue',
+            'flight_number': item.get('flight_iata') or item.get('flight_icao') or item.get('flight_number') or '-',
             'status': status,
             'status_class': status_class,
             'dep_airport': dep_airport or '-',
             'dep_iata': dep_code or '-',
-            'dep_time': dep_time,
+            'dep_time': extract_time_value(item, ['dep_time', 'dep_time_utc', 'dep_scheduled', 'dep_time_ts']),
             'arr_airport': arr_airport or '-',
             'arr_iata': arr_code or '-',
-            'arr_time': arr_time
+            'arr_time': extract_time_value(item, ['arr_time', 'arr_time_utc', 'arr_scheduled', 'arr_time_ts'])
         })
     return flights, None
 
@@ -539,7 +459,7 @@ if FORCE_HTTPS:
 # --- ROUTES PUBLIQUES ---
 @app.route('/')
 def index():
-    return render_template('index.html', data=load_data(), flight_results=None, flight_error=None, flight_warning=None, flight_query={})
+    return render_template('index.html', data=load_data(), flight_results=None, flight_error=None, flight_query={})
 
 @app.route('/iata-suggest')
 def iata_suggest():
@@ -558,14 +478,11 @@ def flight_search():
     }
     if not dep_iata or not arr_iata or not flight_date:
         error = "Veuillez renseigner le depart, l'arrivee et la date."
-        return render_template('index.html', data=load_data(), flight_results=[], flight_error=error, flight_warning=None, flight_query=flight_query)
+        return render_template('index.html', data=load_data(), flight_results=[], flight_error=error, flight_query=flight_query)
     results, error = fetch_flight_schedule(dep_iata, arr_iata, flight_date)
     if not error and not results:
         error = "Aucun vol trouve pour ces criteres."
-    warning = None
-    if results and any(not flight.get('dep_time') or not flight.get('arr_time') for flight in results):
-        warning = "Horaires non fournis par l'API (plan gratuit)."
-    return render_template('index.html', data=load_data(), flight_results=results, flight_error=error, flight_warning=warning, flight_query=flight_query)
+    return render_template('index.html', data=load_data(), flight_results=results, flight_error=error, flight_query=flight_query)
 
 @app.route('/services')
 def services():
