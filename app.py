@@ -55,8 +55,9 @@ DATA_FILE = 'data.json'
 MESSAGES_FILE = 'messages.csv'
 IATA_DATA_FILE = os.path.join(os.path.dirname(__file__), 'iata_airports.json')
 
-AVIATIONSTACK_API_KEY = os.environ.get('AVIATIONSTACK_API_KEY', '')
-AVIATIONSTACK_BASE_URL = os.environ.get('AVIATIONSTACK_BASE_URL', 'https://api.aviationstack.com/v1')
+AIRLABS_API_KEY = os.environ.get('AIRLABS_API_KEY', '')
+AIRLABS_BASE_URL = os.environ.get('AIRLABS_BASE_URL', 'https://airlabs.co/api/v9')
+AIRLABS_ENDPOINT = os.environ.get('AIRLABS_ENDPOINT', 'schedules')
 
 _iata_cache = None
 
@@ -208,17 +209,17 @@ def format_api_datetime(value):
 
 
 def fetch_flight_schedule(dep_iata, arr_iata, flight_date):
-    if not AVIATIONSTACK_API_KEY:
+    if not AIRLABS_API_KEY:
         return [], "La cle API n'est pas configuree."
     params = {
-        'access_key': AVIATIONSTACK_API_KEY,
+        'api_key': AIRLABS_API_KEY,
         'dep_iata': dep_iata,
         'arr_iata': arr_iata
     }
     if flight_date:
-        params['flight_date'] = flight_date
+        params['dep_time'] = flight_date
     try:
-        response = requests.get(f"{AVIATIONSTACK_BASE_URL}/flights", params=params, timeout=12)
+        response = requests.get(f"{AIRLABS_BASE_URL}/{AIRLABS_ENDPOINT}", params=params, timeout=12)
     except requests.RequestException as exc:
         app.logger.warning("Flight API request failed: %s", exc)
         return [], "Impossible de contacter l'API pour le moment."
@@ -227,26 +228,25 @@ def fetch_flight_schedule(dep_iata, arr_iata, flight_date):
         return [], "Erreur de l'API de vols."
     payload = response.json()
     if payload.get('error'):
-        error_message = payload['error'].get('message', "Erreur de l'API de vols.")
-        return [], error_message
+        error = payload['error']
+        error_message = error.get('message') if isinstance(error, dict) else str(error)
+        return [], error_message or "Erreur de l'API de vols."
+    if payload.get('message') and not payload.get('response'):
+        return [], str(payload.get('message'))
     flights = []
-    for item in payload.get('data', [])[:8]:
-        airline = item.get('airline') or {}
-        flight = item.get('flight') or {}
-        departure = item.get('departure') or {}
-        arrival = item.get('arrival') or {}
-        status = (item.get('flight_status') or 'unknown').replace('_', ' ')
+    for item in (payload.get('response') or [])[:8]:
+        status = (item.get('status') or item.get('flight_status') or 'unknown').replace('_', ' ')
         flights.append({
-            'airline': airline.get('name', 'Compagnie inconnue'),
-            'flight_number': flight.get('iata') or flight.get('number') or '-',
+            'airline': item.get('airline_name') or item.get('airline_iata') or item.get('airline_icao') or 'Compagnie inconnue',
+            'flight_number': item.get('flight_iata') or item.get('flight_icao') or item.get('flight_number') or '-',
             'status': status,
             'status_class': status.lower().replace(' ', '-'),
-            'dep_airport': departure.get('airport') or '-',
-            'dep_iata': departure.get('iata') or '-',
-            'dep_time': format_api_datetime(departure.get('scheduled')),
-            'arr_airport': arrival.get('airport') or '-',
-            'arr_iata': arrival.get('iata') or '-',
-            'arr_time': format_api_datetime(arrival.get('scheduled'))
+            'dep_airport': item.get('dep_name') or item.get('dep_airport') or item.get('dep_city') or '-',
+            'dep_iata': item.get('dep_iata') or '-',
+            'dep_time': format_api_datetime(item.get('dep_time') or item.get('dep_time_utc') or item.get('dep_scheduled')),
+            'arr_airport': item.get('arr_name') or item.get('arr_airport') or item.get('arr_city') or '-',
+            'arr_iata': item.get('arr_iata') or '-',
+            'arr_time': format_api_datetime(item.get('arr_time') or item.get('arr_time_utc') or item.get('arr_scheduled'))
         })
     return flights, None
 
