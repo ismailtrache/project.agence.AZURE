@@ -25,11 +25,14 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 limiter = Limiter(get_remote_address, app=app, default_limits=[])
 app.secret_key = 'votre_cle_secrete_ici_pour_les_sessions'
 
+
 @app.context_processor
 def inject_current_year():
     return {"current_year": datetime.utcnow().year}
 
 # --- CONFIGURATION POUR L'ENVOI D'EMAILS ---
+
+
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
 app.config['MAIL_PORT'] = 465
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
@@ -76,8 +79,10 @@ if not admin_logger.handlers:
     admin_logger.setLevel(logging.INFO)
     admin_logger.propagate = False
 
+
 def s3_enabled():
     return bool(S3_BUCKET and _s3_client)
+
 
 def s3_base_url():
     if S3_PUBLIC_BASE:
@@ -85,6 +90,7 @@ def s3_base_url():
     if S3_REGION == 'us-east-1':
         return f"https://{S3_BUCKET}.s3.amazonaws.com"
     return f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com"
+
 
 def build_s3_key(subdir, filename):
     prefix = S3_PREFIX.strip('/')
@@ -96,6 +102,7 @@ def build_s3_key(subdir, filename):
     parts.append(filename)
     return "/".join(parts)
 
+
 def upload_file_to_s3(file_obj, key, content_type):
     extra_args = {}
     if content_type:
@@ -104,6 +111,7 @@ def upload_file_to_s3(file_obj, key, content_type):
         _s3_client.upload_fileobj(file_obj, S3_BUCKET, key, ExtraArgs=extra_args)
     else:
         _s3_client.upload_fileobj(file_obj, S3_BUCKET, key)
+
 
 def save_upload(file_obj, subdir):
     filename = secure_filename(file_obj.filename)
@@ -123,6 +131,7 @@ def save_upload(file_obj, subdir):
     file_obj.save(os.path.join(dest_dir, filename))
     return rel_path
 
+
 def backup_file(local_path, key_name):
     if not s3_enabled():
         return
@@ -141,16 +150,19 @@ def backup_file(local_path, key_name):
     except (OSError, BotoCoreError, ClientError) as exc:
         app.logger.warning("S3 backup failed for %s: %s", local_path, exc)
 
+
 def get_client_ip():
     forwarded = request.headers.get('X-Forwarded-For', '')
     if forwarded:
         return forwarded.split(',')[0].strip()
     return request.remote_addr or 'unknown'
 
+
 def is_https_request():
     if request.is_secure:
         return True
     return request.headers.get('X-Forwarded-Proto', '').lower() == 'https'
+
 
 def load_iata_airports():
     global _iata_cache
@@ -162,6 +174,7 @@ def load_iata_airports():
     with open(IATA_DATA_FILE, 'r', encoding='utf-8') as f:
         _iata_cache = json.load(f)
     return _iata_cache
+
 
 def suggest_airports(query):
     query = (query or '').strip().lower()
@@ -183,6 +196,7 @@ def suggest_airports(query):
             break
     return results
 
+
 def format_api_datetime(value):
     if not value:
         return ''
@@ -191,6 +205,7 @@ def format_api_datetime(value):
     except ValueError:
         return value
     return parsed.strftime('%d/%m %H:%M')
+
 
 def fetch_flight_schedule(dep_iata, arr_iata, flight_date):
     if not AVIATIONSTACK_API_KEY:
@@ -373,6 +388,7 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
+
 
 if FORCE_HTTPS:
     @app.before_request
@@ -803,7 +819,6 @@ def service_detail(service_name):
         return render_template('assurance_service.html', data=site_data, service=service)
     if "hotel" in normalized_name:
         return render_template('hotels_service.html', data=site_data, service=service)
-    
     # Routage conditionnel selon le service
     if service_name == "Visa & Documentation":
         return render_template('visa_service.html', data=site_data, service=service)
@@ -1019,10 +1034,7 @@ index_template = '''
         flex: 0 0 22%; /* chaque carte prend ±25% de largeur */
         box-sizing: border-box;
     }
-    
     </style>
-    
-
 </style>
 
 <section class="hero">
@@ -1330,10 +1342,10 @@ def write_templates():
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(content)
 
+
 if __name__ == '__main__':
     load_data()
     write_templates()
-
 
     load_data()
     write_templates()
