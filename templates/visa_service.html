@@ -25,6 +25,8 @@
     }
     .visa-table tr:nth-child(even) { background-color: #f9f9f9; }
     .visa-table tr:hover { background-color: #f0f8ff; transition: all 0.3s ease; }
+    .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .table-scroll table { width: 100%; min-width: 720px; }
 
     .country-cell { display: flex; align-items: center; gap: 10px; font-weight: 500; }
     .country-flag { width: 28px; height: 20px; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); object-fit: cover; }
@@ -116,10 +118,13 @@
         </div>
 
 {% if data.visa_tables_html %}
+        <div class="table-scroll visa-custom-tables">
             {{ data.visa_tables_html|safe }}
+        </div>
         {% else %}
 <!-- VISAS ÉLECTRONIQUES -->
         <h3>Visas Électroniques</h3>
+        <div class="table-scroll">
         <table class="visa-table">
             <thead>
                 <tr>
@@ -223,9 +228,11 @@
                 </tr>
             </tbody>
         </table>
+        </div>
 
         <!-- VISAS ASIATIQUES -->
         <h3>Visas Asiatiques</h3>
+        <div class="table-scroll">
         <table class="visa-table">
             <thead>
                 <tr>
@@ -336,9 +343,11 @@
                 </tr>
             </tbody>
         </table>
+        </div>
 
         <!-- VISAS AFRICAINS -->
         <h3>Visas Africains</h3>
+        <div class="table-scroll">
         <table class="visa-table">
             <thead>
                 <tr>
@@ -421,9 +430,11 @@
                 </tr>
             </tbody>
         </table>
+        </div>
 
         <!-- VISAS STICKERS (AMBASSADES) -->
         <h3>Visas Stickers - Dépôt en Ambassade</h3>
+        <div class="table-scroll">
         <table class="visa-table">
             <thead>
                 <tr>
@@ -527,9 +538,11 @@
                 </tr>
             </tbody>
         </table>
+        </div>
 
         <!-- VISAS MAJEURS -->
         <h3>Visas Destinations Majeures</h3>
+        <div class="table-scroll">
         <table class="visa-table">
             <thead>
                 <tr>
@@ -603,6 +616,7 @@
                 </tr>
             </tbody>
         </table>
+        </div>
         <div class="special-note">
             <strong>Note spéciale Dubaï :</strong> En cas d'overstay et si le client refuse de régler ses pénalités (200,000 DZD), 
             celles-ci seront automatiquement facturées à l'agence.
