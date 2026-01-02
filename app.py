@@ -1,9 +1,10 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 import os
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash, generate_password_hash
 import json
 import csv
+import requests
 from datetime import datetime
 from functools import wraps
 from flask_mail import Mail, Message
@@ -23,6 +24,10 @@ app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 limiter = Limiter(get_remote_address, app=app, default_limits=[])
 app.secret_key = 'votre_cle_secrete_ici_pour_les_sessions'
+
+@app.context_processor
+def inject_current_year():
+    return {"current_year": datetime.utcnow().year}
 
 # --- CONFIGURATION POUR L'ENVOI D'EMAILS ---
 app.config['MAIL_SERVER'] = 'smtp.gmail.com'
@@ -45,6 +50,12 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 os.makedirs(os.path.join(UPLOAD_FOLDER, 'destinations'), exist_ok=True)
 DATA_FILE = 'data.json'
 MESSAGES_FILE = 'messages.csv'
+IATA_DATA_FILE = os.path.join(os.path.dirname(__file__), 'iata_airports.json')
+
+AVIATIONSTACK_API_KEY = os.environ.get('AVIATIONSTACK_API_KEY', '')
+AVIATIONSTACK_BASE_URL = os.environ.get('AVIATIONSTACK_BASE_URL', 'https://api.aviationstack.com/v1')
+
+_iata_cache = None
 
 S3_BUCKET = os.environ.get('S3_BUCKET')
 S3_REGION = os.environ.get('S3_REGION', 'us-east-1')
@@ -140,6 +151,89 @@ def is_https_request():
     if request.is_secure:
         return True
     return request.headers.get('X-Forwarded-Proto', '').lower() == 'https'
+
+def load_iata_airports():
+    global _iata_cache
+    if _iata_cache is not None:
+        return _iata_cache
+    if not os.path.exists(IATA_DATA_FILE):
+        _iata_cache = []
+        return _iata_cache
+    with open(IATA_DATA_FILE, 'r', encoding='utf-8') as f:
+        _iata_cache = json.load(f)
+    return _iata_cache
+
+def suggest_airports(query):
+    query = (query or '').strip().lower()
+    if len(query) < 2:
+        return []
+    results = []
+    for airport in load_iata_airports():
+        code = (airport.get('iata') or '').lower()
+        city = (airport.get('city') or '').lower()
+        name = (airport.get('name') or '').lower()
+        country = (airport.get('country') or '').lower()
+        if query in code or query in city or query in name or query in country:
+            label = f"{airport.get('iata')} - {airport.get('city')}, {airport.get('country')} ({airport.get('name')})"
+            results.append({
+                'iata': airport.get('iata'),
+                'label': label
+            })
+        if len(results) >= 10:
+            break
+    return results
+
+def format_api_datetime(value):
+    if not value:
+        return ''
+    try:
+        parsed = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return value
+    return parsed.strftime('%d/%m %H:%M')
+
+def fetch_flight_schedule(dep_iata, arr_iata, flight_date):
+    if not AVIATIONSTACK_API_KEY:
+        return [], "La cle API n'est pas configuree."
+    params = {
+        'access_key': AVIATIONSTACK_API_KEY,
+        'dep_iata': dep_iata,
+        'arr_iata': arr_iata
+    }
+    if flight_date:
+        params['flight_date'] = flight_date
+    try:
+        response = requests.get(f"{AVIATIONSTACK_BASE_URL}/flights", params=params, timeout=12)
+    except requests.RequestException as exc:
+        app.logger.warning("Flight API request failed: %s", exc)
+        return [], "Impossible de contacter l'API pour le moment."
+    if response.status_code != 200:
+        app.logger.warning("Flight API error status %s: %s", response.status_code, response.text[:200])
+        return [], "Erreur de l'API de vols."
+    payload = response.json()
+    if payload.get('error'):
+        error_message = payload['error'].get('message', "Erreur de l'API de vols.")
+        return [], error_message
+    flights = []
+    for item in payload.get('data', [])[:8]:
+        airline = item.get('airline') or {}
+        flight = item.get('flight') or {}
+        departure = item.get('departure') or {}
+        arrival = item.get('arrival') or {}
+        status = (item.get('flight_status') or 'unknown').replace('_', ' ')
+        flights.append({
+            'airline': airline.get('name', 'Compagnie inconnue'),
+            'flight_number': flight.get('iata') or flight.get('number') or '-',
+            'status': status,
+            'status_class': status.lower().replace(' ', '-'),
+            'dep_airport': departure.get('airport') or '-',
+            'dep_iata': departure.get('iata') or '-',
+            'dep_time': format_api_datetime(departure.get('scheduled')),
+            'arr_airport': arrival.get('airport') or '-',
+            'arr_iata': arrival.get('iata') or '-',
+            'arr_time': format_api_datetime(arrival.get('scheduled'))
+        })
+    return flights, None
 
 # --- FONCTIONS DE GESTION DES DONNÉES ---
 def load_data():
@@ -289,7 +383,30 @@ if FORCE_HTTPS:
 # --- ROUTES PUBLIQUES ---
 @app.route('/')
 def index():
-    return render_template('index.html', data=load_data())
+    return render_template('index.html', data=load_data(), flight_results=None, flight_error=None, flight_query={})
+
+@app.route('/iata-suggest')
+def iata_suggest():
+    query = request.args.get('q', '')
+    return jsonify(suggest_airports(query))
+
+@app.route('/flight-search', methods=['POST'])
+def flight_search():
+    dep_iata = (request.form.get('departure') or '').strip().upper()
+    arr_iata = (request.form.get('arrival') or '').strip().upper()
+    flight_date = (request.form.get('flight_date') or '').strip()
+    flight_query = {
+        'dep_iata': dep_iata,
+        'arr_iata': arr_iata,
+        'flight_date': flight_date
+    }
+    if not dep_iata or not arr_iata or not flight_date:
+        error = "Veuillez renseigner le depart, l'arrivee et la date."
+        return render_template('index.html', data=load_data(), flight_results=[], flight_error=error, flight_query=flight_query)
+    results, error = fetch_flight_schedule(dep_iata, arr_iata, flight_date)
+    if not error and not results:
+        error = "Aucun vol trouve pour ces criteres."
+    return render_template('index.html', data=load_data(), flight_results=results, flight_error=error, flight_query=flight_query)
 
 @app.route('/services')
 def services():

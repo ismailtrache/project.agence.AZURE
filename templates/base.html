@@ -115,12 +115,13 @@
             </div>
             <div class="footer-section"><h3>Liens Rapides</h3><a href="{{ url_for('services') }}">Services</a><a href="{{ url_for('destinations') }}">Destinations</a><a href="{{ url_for('contact') }}">Contact</a></div>
         </div>
-        <div class="footer-bottom"><p>&copy; 2026 {{ data.company_name }}. Tous droits réservés.</p></div>
+        <div class="footer-bottom"><p>&copy; {{ current_year }} {{ data.company_name }}. Tous droits reserves.</p></div>
     </footer>
     <script>
         const hamburgerButton = document.getElementById('hamburger-button');
         const navLinks = document.getElementById('nav-links');
-        const icon = hamburgerButton.querySelector('i');
+        const icon = hamburgerButton.querySelector('i');Section “Trouver un vol” sur la page d’accueil avec 3 champs: départ, arrivée, dates.
+
         hamburgerButton.addEventListener('click', () => {
             navLinks.classList.toggle('active');
             if (navLinks.classList.contains('active')) {
