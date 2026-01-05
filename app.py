@@ -234,6 +234,23 @@ def parse_int(value, default=None, min_value=None, max_value=None):
         return max_value
     return number
 
+def format_duration_minutes(minutes):
+    if minutes is None:
+        return ''
+    try:
+        minutes = int(minutes)
+    except (TypeError, ValueError):
+        return ''
+    if minutes <= 0:
+        return ''
+    hours = minutes // 60
+    remainder = minutes % 60
+    if hours and remainder:
+        return f"{hours}h {remainder}m"
+    if hours:
+        return f"{hours}h"
+    return f"{remainder}m"
+
 def call_airlabs(endpoint, params):
     try:
         response = requests.get(f"{AIRLABS_BASE_URL}/{endpoint}", params=params, timeout=12)
@@ -296,17 +313,19 @@ def extract_time_value(item, keys):
             return format_api_datetime(value)
     return ''
 
-def fetch_flight_schedule(dep_iata, arr_iata, flight_date, travel_class='1', passengers=1, max_price=None, direct_only=False, deep_search=False):
+def fetch_flight_schedule(dep_iata, arr_iata, flight_date, return_date=None, trip_type='2', travel_class='1', passengers=1, max_price=None, direct_only=False, deep_search=False):
     if not SERPAPI_KEY:
         return [], "La cle API n'est pas configuree."
     params = {
         'departure_id': dep_iata,
         'arrival_id': arr_iata,
         'outbound_date': flight_date,
-        'type': '2',
+        'type': trip_type,
         'travel_class': travel_class,
         'adults': passengers
     }
+    if trip_type == '1' and return_date:
+        params['return_date'] = return_date
     if max_price is not None:
         params['max_price'] = max_price
     if direct_only:
@@ -322,6 +341,7 @@ def fetch_flight_schedule(dep_iata, arr_iata, flight_date, travel_class='1', pas
     if not items:
         return [], "Aucun vol trouve pour ces criteres."
 
+    currency = payload.get('search_parameters', {}).get('currency') or 'USD'
     flights = []
     for item in items[:8]:
         legs = item.get('flights') or []
@@ -341,7 +361,11 @@ def fetch_flight_schedule(dep_iata, arr_iata, flight_date, travel_class='1', pas
             'dep_time': dep_airport.get('time') or '-',
             'arr_airport': arr_airport.get('name') or '-',
             'arr_iata': (arr_airport.get('id') or '-').upper(),
-            'arr_time': arr_airport.get('time') or '-'
+            'arr_time': arr_airport.get('time') or '-',
+            'price': item.get('price'),
+            'currency': currency,
+            'duration': format_duration_minutes(item.get('total_duration')),
+            'trip_type': trip_type
         })
     if not flights:
         return [], "Aucun vol trouve pour ces criteres."
@@ -508,18 +532,24 @@ def flight_search():
     dep_iata = (request.form.get('departure') or '').strip().upper()
     arr_iata = (request.form.get('arrival') or '').strip().upper()
     flight_date = (request.form.get('flight_date') or '').strip()
+    return_date = (request.form.get('return_date') or '').strip()
+    trip_type = (request.form.get('trip_type') or '2').strip()
     travel_class = (request.form.get('travel_class') or '1').strip()
     passengers = parse_int(request.form.get('passengers'), default=1, min_value=1, max_value=9)
     max_price_value = (request.form.get('max_price') or '').strip()
     max_price = parse_int(max_price_value, default=None, min_value=0)
     direct_only = request.form.get('direct_only') == 'on'
     deep_search = request.form.get('deep_search') == 'on'
+    if trip_type not in {'1', '2'}:
+        trip_type = '2'
     if travel_class not in {'1', '2', '3', '4'}:
         travel_class = '1'
     flight_query = {
         'dep_iata': dep_iata,
         'arr_iata': arr_iata,
         'flight_date': flight_date,
+        'return_date': return_date,
+        'trip_type': trip_type,
         'travel_class': travel_class,
         'passengers': passengers,
         'max_price': max_price if max_price is not None else max_price_value,
@@ -529,10 +559,15 @@ def flight_search():
     if not dep_iata or not arr_iata or not flight_date:
         error = "Veuillez renseigner le depart, l'arrivee et la date."
         return render_template('index.html', data=load_data(), flight_results=[], flight_error=error, flight_query=flight_query)
+    if trip_type == '1' and not return_date:
+        error = "Veuillez renseigner la date de retour."
+        return render_template('index.html', data=load_data(), flight_results=[], flight_error=error, flight_query=flight_query)
     results, error = fetch_flight_schedule(
         dep_iata,
         arr_iata,
         flight_date,
+        return_date=return_date,
+        trip_type=trip_type,
         travel_class=travel_class,
         passengers=passengers,
         max_price=max_price,

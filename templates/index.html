@@ -48,6 +48,7 @@
     .flight-field input, .flight-field select { width: 100%; padding: 0.75rem 0.85rem; border: 1px solid #d9e1e6; border-radius: 10px; font-size: 0.95rem; }
     .flight-check { display: flex; align-items: center; gap: 0.5rem; padding: 0.65rem 0.75rem; border: 1px solid #d9e1e6; border-radius: 10px; background: #f8fafc; font-weight: 600; color: var(--primary); margin-bottom: 0; cursor: pointer; }
     .flight-check input { width: auto; }
+    .flight-field.is-hidden { display: none; }
     .flight-search-button { width: 100%; }
     .flight-search-note { margin-top: 1rem; color: var(--text-secondary); font-size: 0.9rem; }
     .flight-alert { margin-top: 1rem; padding: 0.9rem 1rem; border-radius: 12px; font-weight: 600; }
@@ -69,6 +70,9 @@
     .flight-airport { color: var(--text-secondary); font-size: 0.85rem; }
     .flight-time { margin-top: 0.35rem; font-weight: 600; }
     .flight-arrow { color: var(--accent); font-size: 1.1rem; text-align: center; }
+    .flight-meta { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+    .flight-meta-item { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.65rem; border-radius: 999px; border: 1px solid #e2e8f0; background: #fff; font-size: 0.8rem; color: var(--text-secondary); }
+    .flight-meta-item strong { color: var(--primary); }
     @media (max-width: 768px) {
         .hero { padding: 3.5rem 0 3rem; }
         .hero-content { max-width: 100%; }
@@ -110,6 +114,13 @@
             </div>
             <form class="flight-search-form" method="post" action="{{ url_for('flight_search') }}">
                 <div class="flight-field">
+                    <label for="trip-type">Type</label>
+                    <select id="trip-type" name="trip_type">
+                        <option value="2" {% if flight_query.get('trip_type', '2') == '2' %}selected{% endif %}>Aller simple</option>
+                        <option value="1" {% if flight_query.get('trip_type') == '1' %}selected{% endif %}>Aller-retour</option>
+                    </select>
+                </div>
+                <div class="flight-field">
                     <label for="departure">Depart (IATA)</label>
                     <input type="text" id="departure" name="departure" list="iata-list" maxlength="3" pattern="[A-Za-z]{3}" placeholder="CDG" value="{{ flight_query.get('dep_iata', '') }}" required>
                 </div>
@@ -120,6 +131,10 @@
                 <div class="flight-field">
                     <label for="flight-date">Date</label>
                     <input type="date" id="flight-date" name="flight_date" value="{{ flight_query.get('flight_date', '') }}" required>
+                </div>
+                <div class="flight-field" id="return-date-field">
+                    <label for="return-date">Date retour</label>
+                    <input type="date" id="return-date" name="return_date" value="{{ flight_query.get('return_date', '') }}">
                 </div>
                 <div class="flight-field">
                     <label for="travel-class">Classe</label>
@@ -181,6 +196,17 @@
                             <div class="flight-time">{{ flight.arr_time }}</div>
                         </div>
                     </div>
+                    <div class="flight-meta">
+                        {% if flight.price is not none %}
+                        <div class="flight-meta-item"><i class="fas fa-tag"></i> <strong>{{ flight.price }}</strong> {{ flight.currency }}</div>
+                        {% endif %}
+                        {% if flight.duration %}
+                        <div class="flight-meta-item"><i class="fas fa-clock"></i> {{ flight.duration }}</div>
+                        {% endif %}
+                        {% if flight.trip_type == '1' %}
+                        <div class="flight-meta-item"><i class="fas fa-repeat"></i> Aller-retour</div>
+                        {% endif %}
+                    </div>
                 </div>
                 {% endfor %}
             </div>
@@ -195,6 +221,9 @@
         document.getElementById('arrival')
     ].filter(Boolean);
     let iataTimer = null;
+    const tripTypeSelect = document.getElementById('trip-type');
+    const returnDateField = document.getElementById('return-date-field');
+    const returnDateInput = document.getElementById('return-date');
 
     function renderIataOptions(items) {
         if (!iataList) {
@@ -226,6 +255,23 @@
             iataTimer = window.setTimeout(() => fetchIataSuggestions(value), 250);
         });
     });
+
+    function toggleReturnDate() {
+        if (!tripTypeSelect || !returnDateField || !returnDateInput) {
+            return;
+        }
+        const isRoundTrip = tripTypeSelect.value === '1';
+        returnDateField.classList.toggle('is-hidden', !isRoundTrip);
+        returnDateInput.required = isRoundTrip;
+        if (!isRoundTrip) {
+            returnDateInput.value = '';
+        }
+    }
+
+    if (tripTypeSelect) {
+        tripTypeSelect.addEventListener('change', toggleReturnDate);
+        toggleReturnDate();
+    }
 </script>
 
 <section class="section">
