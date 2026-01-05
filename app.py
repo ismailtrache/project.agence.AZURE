@@ -58,6 +58,8 @@ IATA_DATA_FILE = os.path.join(os.path.dirname(__file__), 'iata_airports.json')
 AIRLABS_API_KEY = os.environ.get('AIRLABS_API_KEY', '')
 AIRLABS_BASE_URL = os.environ.get('AIRLABS_BASE_URL', 'https://airlabs.co/api/v9')
 AIRLABS_ENDPOINT = os.environ.get('AIRLABS_ENDPOINT', 'flights')
+SERPAPI_KEY = os.environ.get('SERPAPI_KEY', '')
+SERPAPI_URL = os.environ.get('SERPAPI_URL', 'https://serpapi.com/search.json')
 
 _iata_cache = None
 
@@ -221,6 +223,17 @@ def format_api_datetime(value):
             return value
     return parsed.strftime('%d/%m %H:%M')
 
+def parse_int(value, default=None, min_value=None, max_value=None):
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    if min_value is not None and number < min_value:
+        return min_value
+    if max_value is not None and number > max_value:
+        return max_value
+    return number
+
 def call_airlabs(endpoint, params):
     try:
         response = requests.get(f"{AIRLABS_BASE_URL}/{endpoint}", params=params, timeout=12)
@@ -238,6 +251,25 @@ def call_airlabs(endpoint, params):
     if payload.get('message') and not payload.get('response'):
         return None, str(payload.get('message'))
     return payload.get('response') or [], None
+
+def call_serpapi(params):
+    params = dict(params)
+    params['engine'] = 'google_flights'
+    params['api_key'] = SERPAPI_KEY
+    try:
+        response = requests.get(SERPAPI_URL, params=params, timeout=20)
+    except requests.RequestException as exc:
+        app.logger.warning("SerpApi request failed: %s", exc)
+        return None, "Impossible de contacter l'API pour le moment."
+    if response.status_code != 200:
+        app.logger.warning("SerpApi error status %s: %s", response.status_code, response.text[:200])
+        return None, "Erreur de l'API de vols."
+    payload = response.json()
+    status = payload.get('search_metadata', {}).get('status')
+    if status != 'Success':
+        error_message = payload.get('error') or payload.get('search_metadata', {}).get('status')
+        return None, error_message or "Erreur de l'API de vols."
+    return payload, None
 
 def lookup_iata_airport(iata):
     if not iata:
@@ -264,50 +296,55 @@ def extract_time_value(item, keys):
             return format_api_datetime(value)
     return ''
 
-def fetch_flight_schedule(dep_iata, arr_iata, flight_date):
-    if not AIRLABS_API_KEY:
+def fetch_flight_schedule(dep_iata, arr_iata, flight_date, travel_class='1', passengers=1, max_price=None, direct_only=False, deep_search=False):
+    if not SERPAPI_KEY:
         return [], "La cle API n'est pas configuree."
     params = {
-        'api_key': AIRLABS_API_KEY,
-        'dep_iata': dep_iata,
-        'arr_iata': arr_iata,
-        'limit': 8
+        'departure_id': dep_iata,
+        'arrival_id': arr_iata,
+        'outbound_date': flight_date,
+        'type': '2',
+        'travel_class': travel_class,
+        'adults': passengers
     }
-    if flight_date:
-        params['dep_time'] = flight_date
+    if max_price is not None:
+        params['max_price'] = max_price
+    if direct_only:
+        params['stops'] = 1
+    if deep_search:
+        params['deep_search'] = 'true'
 
-    items, error = call_airlabs(AIRLABS_ENDPOINT, params)
-    if items is None:
+    payload, error = call_serpapi(params)
+    if payload is None:
         return [], error
+
+    items = (payload.get('best_flights') or []) + (payload.get('other_flights') or [])
     if not items:
-        return [], error or "Aucun vol trouve pour ces criteres."
+        return [], "Aucun vol trouve pour ces criteres."
 
     flights = []
     for item in items[:8]:
-        dep_code = (item.get('dep_iata') or '').upper()
-        arr_code = (item.get('arr_iata') or '').upper()
-        dep_airport = item.get('dep_name') or item.get('dep_airport') or item.get('dep_city') or ''
-        arr_airport = item.get('arr_name') or item.get('arr_airport') or item.get('arr_city') or ''
-        if not dep_airport and dep_code:
-            dep_airport = format_airport_label(lookup_iata_airport(dep_code))
-        if not arr_airport and arr_code:
-            arr_airport = format_airport_label(lookup_iata_airport(arr_code))
-        status = (item.get('status') or item.get('flight_status') or 'unknown').replace('_', ' ')
-        status_class = status.lower().replace(' ', '-')
-        if status_class in ('en-route', 'enroute', 'en_route'):
-            status_class = 'active'
+        legs = item.get('flights') or []
+        if not legs:
+            continue
+        first = legs[0]
+        last = legs[-1]
+        dep_airport = first.get('departure_airport') or {}
+        arr_airport = last.get('arrival_airport') or {}
         flights.append({
-            'airline': item.get('airline_name') or item.get('airline_iata') or item.get('airline_icao') or 'Compagnie inconnue',
-            'flight_number': item.get('flight_iata') or item.get('flight_icao') or item.get('flight_number') or '-',
-            'status': status,
-            'status_class': status_class,
-            'dep_airport': dep_airport or '-',
-            'dep_iata': dep_code or '-',
-            'dep_time': extract_time_value(item, ['dep_time', 'dep_time_utc', 'dep_scheduled', 'dep_time_ts']),
-            'arr_airport': arr_airport or '-',
-            'arr_iata': arr_code or '-',
-            'arr_time': extract_time_value(item, ['arr_time', 'arr_time_utc', 'arr_scheduled', 'arr_time_ts'])
+            'airline': first.get('airline') or 'Compagnie inconnue',
+            'flight_number': first.get('flight_number') or '-',
+            'status': 'scheduled',
+            'status_class': 'scheduled',
+            'dep_airport': dep_airport.get('name') or '-',
+            'dep_iata': (dep_airport.get('id') or '-').upper(),
+            'dep_time': dep_airport.get('time') or '-',
+            'arr_airport': arr_airport.get('name') or '-',
+            'arr_iata': (arr_airport.get('id') or '-').upper(),
+            'arr_time': arr_airport.get('time') or '-'
         })
+    if not flights:
+        return [], "Aucun vol trouve pour ces criteres."
     return flights, None
 
 # --- FONCTIONS DE GESTION DES DONNÉES ---
@@ -471,15 +508,37 @@ def flight_search():
     dep_iata = (request.form.get('departure') or '').strip().upper()
     arr_iata = (request.form.get('arrival') or '').strip().upper()
     flight_date = (request.form.get('flight_date') or '').strip()
+    travel_class = (request.form.get('travel_class') or '1').strip()
+    passengers = parse_int(request.form.get('passengers'), default=1, min_value=1, max_value=9)
+    max_price_value = (request.form.get('max_price') or '').strip()
+    max_price = parse_int(max_price_value, default=None, min_value=0)
+    direct_only = request.form.get('direct_only') == 'on'
+    deep_search = request.form.get('deep_search') == 'on'
+    if travel_class not in {'1', '2', '3', '4'}:
+        travel_class = '1'
     flight_query = {
         'dep_iata': dep_iata,
         'arr_iata': arr_iata,
-        'flight_date': flight_date
+        'flight_date': flight_date,
+        'travel_class': travel_class,
+        'passengers': passengers,
+        'max_price': max_price if max_price is not None else max_price_value,
+        'direct_only': direct_only,
+        'deep_search': deep_search
     }
     if not dep_iata or not arr_iata or not flight_date:
         error = "Veuillez renseigner le depart, l'arrivee et la date."
         return render_template('index.html', data=load_data(), flight_results=[], flight_error=error, flight_query=flight_query)
-    results, error = fetch_flight_schedule(dep_iata, arr_iata, flight_date)
+    results, error = fetch_flight_schedule(
+        dep_iata,
+        arr_iata,
+        flight_date,
+        travel_class=travel_class,
+        passengers=passengers,
+        max_price=max_price,
+        direct_only=direct_only,
+        deep_search=deep_search
+    )
     if not error and not results:
         error = "Aucun vol trouve pour ces criteres."
     return render_template('index.html', data=load_data(), flight_results=results, flight_error=error, flight_query=flight_query)
@@ -591,7 +650,7 @@ def upload_logo():
 @login_required
 def add_destination():
     site_data = load_data()
-    new_dest = { "nom": request.form['nom'], "description": request.form['description'], "prix": request.form['prix'], "image": "" }
+    new_dest = {"nom": request.form['nom'], "description": request.form['description'], "prix": request.form['prix'], "image": ""}
     if 'image' in request.files and request.files['image'].filename != '':
         file = request.files['image']
         if allowed_file(file.filename):
